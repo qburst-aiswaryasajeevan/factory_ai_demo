@@ -76,3 +76,22 @@ jobs:
           echo "**Jira:** ${{ github.event.client_payload.issue_key }}" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           cat implementation-plan.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Save implementation plan
+        uses: actions/upload-artifact@v4
+        with:
+          name: implementation-plan
+          path: implementation-plan.md
+
+  await-human-approval:
+    needs: plan-ticket
+    runs-on: ubuntu-latest
+
+    environment:
+      name: AI-IMPLEMENTATION-APPROVAL
+
+    steps:
+      - name: Approval received
+        run: |
+          echo "✅ Human approval received."
+          echo "AI implementation is now authorized for the next stage."
