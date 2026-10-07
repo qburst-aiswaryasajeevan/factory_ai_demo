@@ -92,6 +92,7 @@ jobs:
 
     environment:
       name: AI-IMPLEMENTATION-APPROVAL
+      url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
     permissions:
       contents: write
