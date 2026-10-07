@@ -1,30 +1,46 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:factory_ai_demo/main.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
+  testWidgets(
+    'Login button shows loading state and disables while request runs',
+    (WidgetTester tester) async {
+      await tester.pumpWidget(const MyApp());
+
+      final loginButton = find.byType(FilledButton);
+      expect(loginButton, findsOneWidget);
+
+      await tester.tap(loginButton);
+      await tester.pump();
+
+      expect(find.text('Logging in...'), findsOneWidget);
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      expect(tester.widget<FilledButton>(loginButton).onPressed, isNull);
+
+      await tester.pump(const Duration(milliseconds: 800));
+
+      expect(find.text('Login'), findsOneWidget);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+      expect(tester.widget<FilledButton>(loginButton).onPressed, isNotNull);
+    },
+  );
+
+  testWidgets('Login button ignores duplicate taps while loading', (
+    WidgetTester tester,
+  ) async {
     await tester.pumpWidget(const MyApp());
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+    final loginButton = find.byType(FilledButton);
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
+    await tester.tap(loginButton);
+    await tester.tap(loginButton);
     await tester.pump();
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+    expect(find.text('Logging in...'), findsOneWidget);
+    expect(find.text('Requests sent: 1'), findsOneWidget);
+
+    await tester.pumpAndSettle();
   });
 }
