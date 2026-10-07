@@ -1,0 +1,20 @@
+name: Jira AI Workflow
+
+on:
+  repository_dispatch:
+    types: [jira-ticket]
+
+jobs:
+  process-ticket:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Show Jira ticket
+        run: |
+          echo "Jira ticket: ${{ github.event.client_payload.issue_key }}"
+          echo "Summary: ${{ github.event.client_payload.summary }}"
+          echo "Description:"
+          echo "${{ github.event.client_payload.description }}"
