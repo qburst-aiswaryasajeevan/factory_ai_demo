@@ -142,6 +142,21 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Get Jira transitions
+        env:
+          JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
+          JIRA_EMAIL: ${{ secrets.JIRA_EMAIL }}
+          JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+          JIRA_ISSUE_KEY: ${{ github.event.client_payload.issue_key }}
+        run: |
+          echo "Available Jira transitions for $JIRA_ISSUE_KEY:"
+
+          curl --fail-with-body \
+            --user "$JIRA_EMAIL:$JIRA_API_TOKEN" \
+            --header "Accept: application/json" \
+            "$JIRA_BASE_URL/rest/api/3/issue/$JIRA_ISSUE_KEY/transitions" \
+            | jq -r '.transitions[] | "\(.id) -> \(.name)"'
+
       - name: Download implementation plan
         uses: actions/download-artifact@v4
         with:
