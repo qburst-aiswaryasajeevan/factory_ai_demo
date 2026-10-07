@@ -4,13 +4,17 @@ on:
   repository_dispatch:
     types: [jira-ticket]
 
+permissions:
+  contents: read
+  copilot-requests: write
+
 jobs:
-  process-ticket:
+  plan-ticket:
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Show Jira ticket
         run: |
@@ -18,3 +22,57 @@ jobs:
           echo "Summary: ${{ github.event.client_payload.summary }}"
           echo "Description:"
           echo "${{ github.event.client_payload.description }}"
+
+      - name: Install Copilot CLI
+        run: npm install -g @github/copilot
+
+      - name: Generate implementation plan
+        env:
+          JIRA_ISSUE_KEY: ${{ github.event.client_payload.issue_key }}
+          JIRA_SUMMARY: ${{ github.event.client_payload.summary }}
+          JIRA_DESCRIPTION: ${{ github.event.client_payload.description }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          copilot -p "
+          You are the planning agent for a Flutter software project.
+
+          PLANNING ONLY:
+          Do not modify, create, delete, commit, or push repository files.
+
+          Jira issue: $JIRA_ISSUE_KEY
+          Summary: $JIRA_SUMMARY
+
+          Description:
+          $JIRA_DESCRIPTION
+
+          Analyze the existing Flutter repository architecture and conventions.
+
+          Produce an implementation plan containing:
+          1. Requirement understanding
+          2. Existing architecture/components to reuse
+          3. Files likely to change
+          4. New files likely needed
+          5. Detailed implementation steps
+          6. State management approach
+          7. Validation/loading/error handling
+          8. Tests to add
+          9. Risks and edge cases
+          10. Commands to run before creating a PR
+
+          Do not implement anything.
+          Output only the plan.
+          " \
+            -s \
+            --no-ask-user \
+            --deny-tool=write \
+            --deny-tool='shell(git push)' \
+            --deny-tool='shell(git commit)' \
+            > implementation-plan.md
+
+      - name: Publish implementation plan
+        run: |
+          echo "## 🤖 AI Implementation Plan" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Jira:** ${{ github.event.client_payload.issue_key }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          cat implementation-plan.md >> "$GITHUB_STEP_SUMMARY"
