@@ -10,6 +10,10 @@ permissions:
 
 jobs:
 
+  # ============================================================
+  # 1. AI PLANNING
+  # ============================================================
+
   plan-ticket:
     runs-on: ubuntu-latest
 
@@ -18,11 +22,15 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Show Jira ticket
+        env:
+          JIRA_ISSUE_KEY: ${{ github.event.client_payload.issue_key }}
+          JIRA_SUMMARY: ${{ github.event.client_payload.summary }}
+          JIRA_DESCRIPTION: ${{ github.event.client_payload.description }}
         run: |
-          echo "Jira ticket: ${{ github.event.client_payload.issue_key }}"
-          echo "Summary: ${{ github.event.client_payload.summary }}"
-          echo "Description:"
-          echo "${{ github.event.client_payload.description }}"
+          printf 'Jira ticket: %s\n' "$JIRA_ISSUE_KEY"
+          printf 'Summary: %s\n' "$JIRA_SUMMARY"
+          printf 'Description:\n'
+          printf '%s\n' "$JIRA_DESCRIPTION"
 
       - name: Install Copilot CLI
         run: npm install -g @github/copilot
@@ -49,6 +57,7 @@ jobs:
           Analyze the existing Flutter repository architecture and conventions.
 
           Produce an implementation plan containing:
+
           1. Requirement understanding
           2. Existing architecture/components to reuse
           3. Files likely to change
@@ -70,13 +79,36 @@ jobs:
             --deny-tool='shell(git commit)' \
             > implementation-plan.md
 
+      # ========================================================
+      # Make the plan visible to the human reviewer
+      # ========================================================
+
       - name: Publish implementation plan
+        env:
+          JIRA_ISSUE_KEY: ${{ github.event.client_payload.issue_key }}
+          JIRA_SUMMARY: ${{ github.event.client_payload.summary }}
         run: |
-          echo "## 🤖 AI Implementation Plan" >> "$GITHUB_STEP_SUMMARY"
+          echo "# 🔐 AI Implementation Approval" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "**Jira:** ${{ github.event.client_payload.issue_key }}" >> "$GITHUB_STEP_SUMMARY"
+
+          echo "## Jira" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**${JIRA_ISSUE_KEY} — ${JIRA_SUMMARY}**" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+
+          echo "## 🤖 Proposed Implementation Plan" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           cat implementation-plan.md >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+
+          echo "---" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+
+          echo "## ⚠️ Human Decision Required" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Review the implementation plan above before approving **AI-IMPLEMENTATION-APPROVAL**." >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Approval authorizes the AI implementation job to modify the repository." >> "$GITHUB_STEP_SUMMARY"
 
       - name: Save implementation plan
         uses: actions/upload-artifact@v4
@@ -84,6 +116,10 @@ jobs:
           name: implementation-plan
           path: implementation-plan.md
 
+
+  # ============================================================
+  # 2. HUMAN APPROVAL + AI IMPLEMENTATION
+  # ============================================================
 
   implement-ticket:
     needs: plan-ticket
@@ -115,7 +151,7 @@ jobs:
         env:
           JIRA_ISSUE_KEY: ${{ github.event.client_payload.issue_key }}
         run: |
-          BRANCH_NAME="feature/${JIRA_ISSUE_KEY}-login-screen"
+          BRANCH_NAME="feature/${JIRA_ISSUE_KEY}"
           git checkout -b "$BRANCH_NAME"
           echo "BRANCH_NAME=$BRANCH_NAME" >> "$GITHUB_ENV"
 
@@ -177,6 +213,10 @@ jobs:
             --deny-tool='shell(gh pr create)' \
             --deny-tool='shell(gh pr merge)'
 
+      # ========================================================
+      # 3. VALIDATION
+      # ========================================================
+
       - name: Install dependencies
         run: flutter pub get
 
@@ -189,9 +229,15 @@ jobs:
       - name: Test
         run: flutter test
 
+
+      # ========================================================
+      # 4. COMMIT
+      # ========================================================
+
       - name: Commit implementation
         env:
           JIRA_ISSUE_KEY: ${{ github.event.client_payload.issue_key }}
+          JIRA_SUMMARY: ${{ github.event.client_payload.summary }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -203,11 +249,21 @@ jobs:
             exit 1
           }
 
-          git commit -m "feat(${JIRA_ISSUE_KEY}): implement login screen"
+          git commit -m "feat(${JIRA_ISSUE_KEY}): ${JIRA_SUMMARY}"
+
+
+      # ========================================================
+      # 5. PUSH FEATURE BRANCH
+      # ========================================================
 
       - name: Push feature branch
         run: |
           git push --set-upstream origin "$BRANCH_NAME"
+
+
+      # ========================================================
+      # 6. CREATE PR
+      # ========================================================
 
       - name: Create pull request
         env:
