@@ -9,6 +9,7 @@ permissions:
   copilot-requests: write
 
 jobs:
+
   plan-ticket:
     runs-on: ubuntu-latest
 
@@ -83,15 +84,154 @@ jobs:
           name: implementation-plan
           path: implementation-plan.md
 
-  await-human-approval:
+
+  implement-ticket:
     needs: plan-ticket
+
     runs-on: ubuntu-latest
 
     environment:
       name: AI-IMPLEMENTATION-APPROVAL
 
+    permissions:
+      contents: write
+      pull-requests: write
+      copilot-requests: write
+
     steps:
-      - name: Approval received
+
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Download implementation plan
+        uses: actions/download-artifact@v4
+        with:
+          name: implementation-plan
+
+      - name: Create feature branch
+        env:
+          JIRA_ISSUE_KEY: ${{ github.event.client_payload.issue_key }}
         run: |
-          echo "✅ Human approval received."
-          echo "AI implementation is now authorized for the next stage."
+          BRANCH_NAME="feature/${JIRA_ISSUE_KEY}-login-screen"
+          git checkout -b "$BRANCH_NAME"
+          echo "BRANCH_NAME=$BRANCH_NAME" >> "$GITHUB_ENV"
+
+      - name: Install Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.47.6"
+          channel: stable
+          cache: true
+
+      - name: Install Copilot CLI
+        run: npm install -g @github/copilot
+
+      - name: Implement Jira ticket
+        env:
+          JIRA_ISSUE_KEY: ${{ github.event.client_payload.issue_key }}
+          JIRA_SUMMARY: ${{ github.event.client_payload.summary }}
+          JIRA_DESCRIPTION: ${{ github.event.client_payload.description }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          copilot -p "
+          You are the implementation agent for a Flutter software project.
+
+          Jira issue: $JIRA_ISSUE_KEY
+          Summary: $JIRA_SUMMARY
+
+          Jira description:
+          $JIRA_DESCRIPTION
+
+          The approved implementation plan is in:
+          implementation-plan.md
+
+          Read the implementation plan before making changes.
+
+          Implement the Jira ticket completely.
+
+          Rules:
+          - Follow the existing Flutter architecture and conventions.
+          - Make the smallest appropriate changes.
+          - Reuse existing components where possible.
+          - Add appropriate tests.
+          - Do not modify GitHub Actions workflows.
+          - Do not modify repository permissions.
+          - Do not modify secrets.
+          - Do not make unrelated refactoring.
+          - Do not commit changes.
+          - Do not push changes.
+          - Do not create or merge a pull request.
+
+          You may inspect and modify application source and test files.
+
+          When implementation is complete, summarize the files changed.
+          " \
+            -s \
+            --no-ask-user \
+            --allow-tool=write \
+            --deny-tool='shell(git commit)' \
+            --deny-tool='shell(git push)' \
+            --deny-tool='shell(gh pr create)' \
+            --deny-tool='shell(gh pr merge)'
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Format
+        run: dart format lib test
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Test
+        run: flutter test
+
+      - name: Commit implementation
+        env:
+          JIRA_ISSUE_KEY: ${{ github.event.client_payload.issue_key }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add lib test
+
+          git diff --cached --quiet && {
+            echo "No implementation changes detected."
+            exit 1
+          }
+
+          git commit -m "feat(${JIRA_ISSUE_KEY}): implement login screen"
+
+      - name: Push feature branch
+        run: |
+          git push --set-upstream origin "$BRANCH_NAME"
+
+      - name: Create pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          JIRA_ISSUE_KEY: ${{ github.event.client_payload.issue_key }}
+          JIRA_SUMMARY: ${{ github.event.client_payload.summary }}
+        run: |
+          gh pr create \
+            --base main \
+            --head "$BRANCH_NAME" \
+            --title "feat(${JIRA_ISSUE_KEY}): ${JIRA_SUMMARY}" \
+            --body "## Jira
+
+          ${JIRA_ISSUE_KEY}
+
+          ## Summary
+
+          Automated implementation generated after human approval.
+
+          ## Validation
+
+          - dart format
+          - flutter analyze
+          - flutter test
+
+          ## Review
+
+          Human review required before merge."
